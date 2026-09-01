@@ -13,6 +13,146 @@ exit_on_error() {
     exit 1
 }
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || SCRIPT_DIR=""
+
+# Resolve downgrade/script source: local clone or download from GitHub
+resolve_install_source() {
+    if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/files/downgrade/steam.cfg" ]; then
+        printf "\nUsing local UTMdeck files from: %s\n" "$SCRIPT_DIR" >&2
+        echo "$SCRIPT_DIR"
+        return 0
+    fi
+
+    printf "\nDownloading pinned Steam binaries (this may take a few minutes)..\n" >&2
+    TEMP_UD="$STEAMROOT/temp_ud"
+    mkdir -p "$TEMP_UD/files/downgrade" "$TEMP_UD/files/steam"
+
+    DOWNGRADE_BASE="${REPO_URL}/raw/${REPO_BRANCH}/files/downgrade"
+    STEAM_BASE="${REPO_URL}/raw/${REPO_BRANCH}/files/steam"
+
+    for f in steam.cfg linuxarm64.tar.gz linux_x86_64.zip steamui_websrc_all.zip \
+             steamrtarm64.tar.gz.partaa steamrtarm64.tar.gz.partab steamrtarm64.tar.gz.partac; do
+        wget -q --show-progress -c -t 5 -O "$TEMP_UD/files/downgrade/$f" "$DOWNGRADE_BASE/$f" \
+            || exit_on_error "Failed to download $f (check your internet connection)"
+    done
+
+    wget -q -t 5 -O "$TEMP_UD/files/steam/launch-steam.sh" "$STEAM_BASE/launch-steam.sh" \
+        || exit_on_error "Failed to download launch-steam.sh"
+    wget -q -t 5 -O "$TEMP_UD/files/steam/update-utmdeck.sh" "$STEAM_BASE/update-utmdeck.sh" \
+        || exit_on_error "Failed to download update-utmdeck.sh"
+
+    echo "$TEMP_UD"
+}
+
+apply_downgrade_files() {
+    local SRC="$1"
+    local DOWNGRADE="$SRC/files/downgrade"
+
+    printf "\nApplying pinned Steam binaries and blocking auto-updates..\n"
+
+    # Lock updates before Steam ever runs — prevents the update loop / socket disconnect crash
+    cp -f "$DOWNGRADE/steam.cfg" "$STEAMROOT/steam.cfg"
+    chmod 444 "$STEAMROOT/steam.cfg"
+
+    if [ -f "$DOWNGRADE/linuxarm64.tar.gz" ]; then
+        mkdir -p "$STEAMROOT/linuxarm64"
+        tar -xzf "$DOWNGRADE/linuxarm64.tar.gz" -C "$STEAMROOT/linuxarm64"
+    fi
+
+    if [ -f "$DOWNGRADE/linux_x86_64.zip" ]; then
+        unzip -q -o "$DOWNGRADE/linux_x86_64.zip" -d "$STEAMROOT"
+    fi
+
+    if [ -f "$DOWNGRADE/steamui_websrc_all.zip" ]; then
+        unzip -q -o "$DOWNGRADE/steamui_websrc_all.zip" "steamui/*" -d "$STEAMROOT"
+    fi
+
+    if [ -f "$DOWNGRADE/steamrtarm64.tar.gz.partaa" ]; then
+        mkdir -p "$STEAMROOT/steamrtarm64"
+        cat "$DOWNGRADE/steamrtarm64.tar.gz.part"* > "$STEAMROOT/temp_steamrtarm64.tar.gz"
+        tar -xzf "$STEAMROOT/temp_steamrtarm64.tar.gz" -C "$STEAMROOT/steamrtarm64"
+        rm -f "$STEAMROOT/temp_steamrtarm64.tar.gz"
+    fi
+
+    cp -f "$SRC/files/steam/launch-steam.sh" "$STEAMROOT/"
+    cp -f "$SRC/files/steam/update-utmdeck.sh" "$STEAMROOT/"
+    chmod +x "$STEAMROOT/launch-steam.sh" "$STEAMROOT/update-utmdeck.sh"
+    chmod -R +x "$STEAMROOT"
+}
+
+setup_steam_shortcuts() {
+    ln -fsn "$STEAMROOT" "$STEAMHOME/root"
+    ln -fsn "$STEAMROOT" "$STEAMHOME/steam"
+    ln -fsn "$STEAMROOT/linux32" "$STEAMHOME/sdk32"
+    ln -fsn "$STEAMROOT/linux64" "$STEAMHOME/sdk64"
+    ln -fsn "$STEAMROOT/linuxarm64" "$STEAMHOME/sdkarm64"
+    ln -fsn "$STEAMROOT/ubuntu12_32" "$STEAMHOME/bin32"
+    ln -fsn "$STEAMROOT/ubuntu12_64" "$STEAMHOME/bin64"
+    ln -fsn "$STEAMHOME/bin32" "$STEAMHOME/bin"
+    ln -fsn "$STEAMROOT/steamrtarm64" "$STEAMROOT/steamrtarm32"
+
+    mkdir -p "$HOME/.local/bin"
+    ln -fsn "$STEAMROOT/launch-steam.sh" "$HOME/.local/bin/steam"
+
+    MENU_DIR="$HOME/.local/share/applications"
+    mkdir -p "$MENU_DIR"
+
+    DESKTOP_DIR=$(xdg-user-dir DESKTOP 2>/dev/null || echo "$HOME/Desktop")
+    mkdir -p "$DESKTOP_DIR"
+
+    DESKTOP_FILE="$MENU_DIR/steam.desktop"
+    cat > "$DESKTOP_FILE" <<EOF
+[Desktop Entry]
+Name=Steam
+Comment=Launch Steam
+Exec=$HOME/.local/bin/steam %U
+Icon=$STEAMROOT/public/steam_tray_48.tga
+Terminal=false
+Type=Application
+Categories=Game;
+MimeType=x-scheme-handler/steam;
+EOF
+
+    if [[ "${XDG_CURRENT_DESKTOP}" == *"KDE"* ]]; then
+        KDE_MENU_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/kio/servicemenus"
+        [ -d "$HOME/.local/share/kservices5" ] && KDE_MENU_DIR="$HOME/.local/share/kservices5/ServiceMenus"
+        mkdir -p "$KDE_MENU_DIR" "$STEAMROOT/UTMdeck"
+        cat << 'EOF' > "$STEAMROOT/UTMdeck/utmdeck-add-game"
+#!/bin/sh
+TARGET_ITEM="$1"
+[ -z "$TARGET_ITEM" ] && exit 1
+if ! ps ax | grep -q 'steamrtarm64/[s]team'; then
+    kdialog --title Error --error "Require the Steam to be active."
+    exit 1
+fi
+encodedUrl="steam://addnonsteamgame/$(python3 -c "import urllib.parse; print(urllib.parse.quote(\"$TARGET_ITEM\", safe=''))")"
+touch /tmp/addnonsteamgamefile
+xdg-open $encodedUrl
+bn=$(basename "$TARGET_ITEM")
+kdialog --passivepopup "$bn has been added to Steam." 5
+EOF
+        cat > "$KDE_MENU_DIR/addtosteam.desktop" <<EOF
+[Desktop Entry]
+Type=Service
+ServiceTypes=KonqPopupMenu/Plugin
+MimeType=application/x-executable;application/x-desktop;
+Actions=addToSteam
+X-KDE-Priority=TopLevel
+Icon=$STEAMROOT/public/steam_tray_48.tga
+
+[Desktop Action addToSteam]
+Exec=$STEAMROOT/UTMdeck/utmdeck-add-game %f
+Icon=$STEAMROOT/public/steam_tray_48.tga
+Name=Add to Steam
+EOF
+        chmod +x "$STEAMROOT/UTMdeck/utmdeck-add-game" "$KDE_MENU_DIR/addtosteam.desktop"
+    fi
+
+    chmod +x "$DESKTOP_FILE"
+    ln -fs "$DESKTOP_FILE" "$DESKTOP_DIR/steam.desktop"
+    update-desktop-database "$MENU_DIR" 2>/dev/null
+}
+
 # Check for terminal
 if [ ! -t 0 ]; then
     if command -v konsole >/dev/null 2>&1; then
@@ -234,120 +374,16 @@ EOF
 fi
 
 if [ -x "$RTARM64ROOT/steam" ]; then
-    printf "\nStarting Steam (Initial Update phase)..\n"
-    export LD_LIBRARY_PATH="$RTARM64ROOT:${LD_LIBRARY_PATH-}"
-    "$RTARM64ROOT/steam" "$@" || true
+    INSTALL_SRC="$(resolve_install_source)"
+    apply_downgrade_files "$INSTALL_SRC"
+    setup_steam_shortcuts
 
-    printf "\nSteam exited. Downloading files to downgrade steam..\n"
-
-    TEMP_UD="$STEAMROOT/temp_ud"
-    mkdir -p "$TEMP_UD"
-
-    wget -q -t 5 -O- "${REPO_URL}/archive/refs/heads/${REPO_BRANCH}.tar.gz" | tar xz -C "$TEMP_UD" --strip-components=1 || exit_on_error "Failed to download/extract downgrade files"
-
-    if [ -f "$TEMP_UD/files/downgrade/linuxarm64.tar.gz" ]; then
-        mkdir -p "$STEAMROOT/linuxarm64"
-        tar -xzf "$TEMP_UD/files/downgrade/linuxarm64.tar.gz" -C "$STEAMROOT/linuxarm64"
+    if [ "$INSTALL_SRC" = "$STEAMROOT/temp_ud" ]; then
+        rm -rf "$STEAMROOT/temp_ud"
     fi
-
-    if [ -f "$TEMP_UD/files/downgrade/linux_x86_64.zip" ]; then
-        unzip -q -o "$TEMP_UD/files/downgrade/linux_x86_64.zip" -d "$STEAMROOT"
-    fi
-
-    if [ -f "$TEMP_UD/files/downgrade/steamui_websrc_all.zip" ]; then
-        unzip -q -o "$TEMP_UD/files/downgrade/steamui_websrc_all.zip" "steamui/*" -d "$STEAMROOT"
-    fi
-
-    if [ -f "$TEMP_UD/files/downgrade/steamrtarm64.tar.gz.partaa" ]; then
-        mkdir -p "$STEAMROOT/steamrtarm64"
-        cat "$TEMP_UD/files/downgrade/steamrtarm64.tar.gz.part"* > "$TEMP_UD/steamrtarm64.tar.gz"
-        tar -xzf "$TEMP_UD/steamrtarm64.tar.gz" -C "$STEAMROOT/steamrtarm64"
-        rm -f "$TEMP_UD/steamrtarm64.tar.gz"
-    fi
-
-    cp -f "$TEMP_UD/files/downgrade/steam.cfg" "$STEAMROOT/steam.cfg"
-    cp -f "$TEMP_UD/files/steam/launch-steam.sh" "$STEAMROOT/"
-    cp -f "$TEMP_UD/files/steam/update-utmdeck.sh" "$STEAMROOT/"
-
-    rm -rf "$TEMP_UD"
-
-    chmod -R +x "$STEAMROOT"
-
-    ln -fsn "$STEAMROOT" "$STEAMHOME/root"
-    ln -fsn "$STEAMROOT" "$STEAMHOME/steam"
-    ln -fsn "$STEAMROOT/linux32" "$STEAMHOME/sdk32"
-    ln -fsn "$STEAMROOT/linux64" "$STEAMHOME/sdk64"
-    ln -fsn "$STEAMROOT/linuxarm64" "$STEAMHOME/sdkarm64"
-    ln -fsn "$STEAMROOT/ubuntu12_32" "$STEAMHOME/bin32"
-    ln -fsn "$STEAMROOT/ubuntu12_64" "$STEAMHOME/bin64"
-    ln -fsn "$STEAMHOME/bin32" "$STEAMHOME/bin"
-    ln -fsn "$STEAMROOT/steamrtarm64" "$STEAMROOT/steamrtarm32"
-
-    mkdir -p "$HOME/.local/bin"
-    ln -fsn "$STEAMROOT/launch-steam.sh" "$HOME/.local/bin/steam"
-
-    MENU_DIR="$HOME/.local/share/applications"
-    mkdir -p "$MENU_DIR"
-
-    DESKTOP_DIR=$(xdg-user-dir DESKTOP 2>/dev/null || echo "$HOME/Desktop")
-    mkdir -p "$DESKTOP_DIR"
-
-    DESKTOP_FILE="$MENU_DIR/steam.desktop"
-    cat > "$DESKTOP_FILE" <<EOF
-[Desktop Entry]
-Name=Steam
-Comment=Launch Steam
-Exec=$HOME/.local/bin/steam %U
-Icon=$STEAMROOT/public/steam_tray_48.tga
-Terminal=false
-Type=Application
-Categories=Game;
-MimeType=x-scheme-handler/steam;
-EOF
-
-    if [[ "${XDG_CURRENT_DESKTOP}" == *"KDE"* ]]; then
-        KDE_MENU_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/kio/servicemenus"
-        [ -d "$HOME/.local/share/kservices5" ] && KDE_MENU_DIR="$HOME/.local/share/kservices5/ServiceMenus"
-        mkdir -p "$KDE_MENU_DIR" "$STEAMROOT/UTMdeck"
-        cat << 'EOF' > "$STEAMROOT/UTMdeck/utmdeck-add-game"
-#!/bin/sh
-TARGET_ITEM="$1"
-[ -z "$TARGET_ITEM" ] && exit 1
-if ! ps ax | grep -q 'steamrtarm64/[s]team'; then
-    kdialog --title Error --error "Require the Steam to be active."
-    exit 1
-fi
-encodedUrl="steam://addnonsteamgame/$(python3 -c "import urllib.parse; print(urllib.parse.quote(\"$TARGET_ITEM\", safe=''))")"
-touch /tmp/addnonsteamgamefile
-xdg-open $encodedUrl
-bn=$(basename "$TARGET_ITEM")
-kdialog --passivepopup "$bn has been added to Steam." 5
-EOF
-        cat > "$KDE_MENU_DIR/addtosteam.desktop" <<EOF
-[Desktop Entry]
-Type=Service
-ServiceTypes=KonqPopupMenu/Plugin
-MimeType=application/x-executable;application/x-desktop;
-Actions=addToSteam
-X-KDE-Priority=TopLevel
-Icon=$STEAMROOT/public/steam_tray_48.tga
-
-[Desktop Action addToSteam]
-Exec=$STEAMROOT/UTMdeck/utmdeck-add-game %f
-Icon=$STEAMROOT/public/steam_tray_48.tga
-Name=Add to Steam
-EOF
-        chmod +x "$STEAMROOT/UTMdeck/utmdeck-add-game" "$KDE_MENU_DIR/addtosteam.desktop"
-    fi
-
-    chmod +x "$DESKTOP_FILE"
-    ln -fs "$DESKTOP_FILE" "$DESKTOP_DIR/steam.desktop"
-    update-desktop-database "$MENU_DIR" 2>/dev/null
-
-    chmod -R +x "$STEAMROOT"
 
     printf "\nInstallation complete!\n"
-    printf "To launch Steam, use the provided desktop shortcuts\n"
-    printf "or run launch-steam.sh in your Steam folder.\n\n"
+    printf "Steam was NOT launched during install (avoids update loops).\n"
+    printf "Launch Steam now with the desktop shortcut or: steam\n\n"
     sleep 3
 fi

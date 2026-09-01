@@ -108,6 +108,13 @@ UTMDECK_DIR="$STEAMROOT/UTMdeck"
 CEF_PATH="$STEAMROOT/steamrtarm64/steamwebhelper.sh"
 CEF_DUMMY="${CEF_PATH}.dummy"
 
+# Re-apply update lock if missing (prevents "installing update" loops)
+if [ ! -f "$STEAMROOT/steam.cfg" ]; then
+    printf 'BootStrapperInhibitAll=enable\n' > "$STEAMROOT/steam.cfg"
+    chmod 444 "$STEAMROOT/steam.cfg"
+    log "Created missing steam.cfg to block auto-updates"
+fi
+
 # check for updates
 ONLINE=0
 if [ "$UPDATE_CHECK" = "true" ] && [ ! -t 0 ] && ! pidof steam >/dev/null 2>&1; then

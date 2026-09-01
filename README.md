@@ -112,6 +112,22 @@ Tips for better performance:
 
 ## Troubleshooting
 
+**"Installing update" loop / "socket disconnected no more messages are expected"**
+Steam tried to auto-update before the pinned binaries were applied. Fix with a clean reinstall:
+
+```bash
+rm -rf ~/.local/share/Steam ~/.steam
+wget https://raw.githubusercontent.com/m7830380-cyber/UTMdeck/main/install-steam.sh
+bash install-steam.sh
+```
+
+Answer **yes** to delete existing Steam folders. The updated installer applies the downgrade and `steam.cfg` *before* launching Steam. Verify:
+
+```bash
+cat ~/.local/share/Steam/steam.cfg
+# should show: BootStrapperInhibitAll=enable
+```
+
 **Steam crashes with "illegal instruction"**
 The downgrade step should prevent this. Re-run the installer or check that `steam.cfg` exists in your Steam folder with `BootStrapperInhibitAll=enable`.
 
