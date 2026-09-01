@@ -7,7 +7,8 @@ set -euo pipefail
 
 REPO_URL="https://github.com/m7830380-cyber/UTMdeck"
 REPO_BRANCH="main"
-FALLBACK_DOWNGRADE_BASE="https://raw.githubusercontent.com/SildurFX/Switchdeck/main/files/downgrade"
+# Pinned Steam binaries are mirrored from Switchdeck (same known-good files)
+DOWNGRADE_BASE="https://raw.githubusercontent.com/SildurFX/Switchdeck/main/files/downgrade"
 
 exit_on_error() {
     printf "\nERROR: %s\n" "$1" >&2
