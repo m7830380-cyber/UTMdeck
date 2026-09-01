@@ -1,73 +1,151 @@
-# Switchdeck: Steam ARM64 for Switch (L4T)
+# UTMdeck: Steam ARM64 for iPad Pro via UTM
 
-<img src="https://i.imgur.com/h0VFbgW.png" width="100%" alt="Steam Deck UI">
+Run the Steam client on **Ubuntu 24.04 (Kubuntu Desktop)** inside a **UTM virtual machine** on iPad Pro. Adapted from [Switchdeck](https://github.com/SildurFX/Switchdeck) for ARM64 Linux VMs instead of Nintendo Switch hardware.
 
-<div align="center">
-  <img src="https://i.imgur.com/zaBCMSh.png" width="49%" alt="In-Game">
-  <img src="https://i.imgur.com/b5L16Dc.png" width="49%" alt="Settings">
-</div>
+---
+
+## Prerequisites
+
+### iPad / UTM setup
+
+1. Install **UTM (TrollStore Edition)** on your iPad Pro.
+2. Create a new VM with:
+   - **Architecture:** ARM64 (aarch64)
+   - **RAM:** 8 GB recommended (minimum 6 GB)
+   - **Storage:** 64 GB+ free space
+   - **Display:** VirtIO-GPU or compatible graphics
+3. Install **Ubuntu Server 24.04 ARM64**, then add the desktop:
+
+```bash
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y kubuntu-desktop
+sudo reboot
+```
+
+4. After reboot, log into Kubuntu and run all system updates.
+
+### Verify your system
+
+```bash
+uname -m          # must print: aarch64
+vulkaninfo        # should list at least one Vulkan device (may be llvmpipe/software)
+```
 
 ---
 
 ## Installation
-1. Download and run `install-steam.sh` in your **terminal**.
-2. Use the shortcut or `launch-steam.sh` in your Steam folder to launch Steam. On first launch a popup will appear and install steam runtime 4.0 arm64.
-3. In Steam go to **Settings** -> **Library** and turn on: Low Bandwidth, Low Performance and Disable Community Content.
-4. Go to **Settings** -> **Compatibility** and select Proton Experimental or Proton 11.0-1 Armv8.0 (FEX). **FEX does not support 32-bit games** because of severe graphical bugs.
-5. Go to **Settings** -> **Controller:** -> **Show Advanced Settings:** Enable "Combine Joycon Pairs" and Enable Steam Input for Pro and Generic Controller. ([Capture Button](https://wiki.switchroot.org/wiki/~gitbook/image?url=https%3A%2F%2F1282083284-files.gitbook.io%2F%7E%2Ffiles%2Fv0%2Fb%2Fgitbook-x-prod.appspot.com%2Fo%2Fspaces%252F5A2PNyzG80QTDoltbtvZ%252Fuploads%252Fgit-blob-3f3536275b42d0474793e7cf4be05e666d5c8394%252Fjoycon_mapping.png%3Falt%3Dmedia&width=768&dpr=3&quality=100&sign=2c313375&sv=2) below D-Pad switches from Desktop Mode to Controller)
-6. Restart Steam to apply the [DXVK-Sarek](https://github.com/pythonlover02/DXVK-Sarek), [VKD3D](https://github.com/HansKristian-Work/vkd3d-proton/releases/tag/v2.3.1) and Vertex Explosion patch to Proton.
 
-**Note:** If Steam updates your Proton version you have to relaunch it to reapply the [DXVK-Sarek,](https://github.com/pythonlover02/DXVK-Sarek) [VKD3D](https://github.com/HansKristian-Work/vkd3d-proton/releases/tag/v2.3.1) and Vertex Explosion patch. It's applied on launch.
+Open a terminal in Kubuntu and run:
+
+```bash
+wget https://raw.githubusercontent.com/m7830380-cyber/UTMdeck/main/install-steam.sh
+bash install-steam.sh
+```
+
+The installer will:
+
+- Install Box64, Vulkan drivers, and other dependencies
+- Download and configure Steam ARM64
+- Apply a known-good Steam downgrade (avoids illegal-instruction crashes)
+- Set up DXVK-Sarek and VKD3D compatibility patches
+- Create a desktop shortcut and `~/.local/bin/steam` command
+
+Use the **Steam** desktop shortcut or run `steam` from a terminal to launch.
+
+---
+
+## Post-install Steam settings
+
+1. **Settings → Library:** Enable Low Bandwidth, Low Performance, and Disable Community Content.
+2. **Settings → Compatibility:** Select **Proton Experimental** for Windows games.
+3. Restart Steam once so DXVK-Sarek and VKD3D patches apply to Proton.
 
 ---
 
 ## Requirements
-* [Linux for Switch:](https://wiki.switchroot.org/wiki/linux) Kubuntu Noble or Fedora 42. **Make sure to install all the latest system updates.** (Fedora 42 is currently unstable on some systems)
-* [Box64](https://github.com/ptitseb/box64) to run games. Shipped with Fedora 42 by default. Switchdeck installs it for you on Ubuntu.
-* **Vulkan 1.2 Support:** Fedora ships with the latest GPU driver. Switchdeck updates it for you on Ubuntu.
-* [RAM OC:](https://wiki.switchroot.org/wiki/linux/linux-features#ram_oc0) Nintendo Switch has 4GB shared between CPU and GPU so overclocking RAM helps a lot.
+
+| Component | Notes |
+|-----------|-------|
+| **OS** | Ubuntu 24.04 ARM64 with Kubuntu desktop |
+| **VM** | UTM on iPad Pro (8 GB RAM allocated) |
+| **Architecture** | aarch64 only |
+| **Box64** | Installed automatically (runs x86_64 Proton builds) |
+| **Vulkan** | Mesa software/virtio drivers installed automatically |
+| **Internet** | Required for initial install and Steam login |
 
 ---
 
 ## Features
-* `SD_GAMEMODE=1 or 2 %command%` Games launched with this command unload the steamwebhelper to **free up over 1GB of RAM.** In mode 2 it also unloads KDE services including Network services. Restoring Steam or KDE after game exit is gonna take a few seconds.
-* `SD_SWAP=1 %command%` Adds 4GB of Swap for the current game and disables it on exit. Required for some games that run out of RAM.
-* `SD_ZRAM=1 or 2 %command%` Adds 1GB or 2GB of extra ZRAM for the current game and disables it on exit. Provides better stability for games close to the RAM limit.
-* [DXVK-Sarek](https://github.com/pythonlover02/DXVK-Sarek) Patch for Steam Proton and [GE-Proton](https://github.com/gloriouseggroll/proton-ge-custom).
-* [VKD3D v2.3.1](https://github.com/HansKristian-Work/vkd3d-proton/releases/tag/v2.3.1) Patch for Steam Proton and [GE-Proton](https://github.com/gloriouseggroll/proton-ge-custom).
-* Vulkan extension patch for Proton and [GE-Proton](https://github.com/gloriouseggroll/proton-ge-custom) to fix Vertex explosions in 32-bit games. (Caused by broken Nvidia Drivers.)
-* KDE Context Menu: Add to Steam, to easily import non-Steam games.
+
+* `UD_GAMEMODE=1 %command%` — Unload steamwebhelper during games (~1 GB RAM freed).
+* `UD_GAMEMODE=2 %command%` — Also stop KDE Plasma services for extra RAM.
+* `UD_SWAP=1 %command%` — Add 2 GB swap during the game session.
+* `UD_ZRAM=1 or 2 %command%` — Add 1 GB or 2 GB zram during the game session.
+* [DXVK-Sarek](https://github.com/pythonlover02/DXVK-Sarek) patch for Proton and GE-Proton.
+* [VKD3D v2.3.1](https://github.com/HansKristian-Work/vkd3d-proton/releases/tag/v2.3.1) patch for Proton and GE-Proton.
+* KDE context menu: **Add to Steam** for importing non-Steam games.
+* Auto-update of launch scripts from this repository.
+
+Legacy `SD_*` launch option names from Switchdeck are also accepted.
 
 ---
 
-## Information
-* [Game compatibility list](https://docs.google.com/spreadsheets/d/1UrLwRaIZGAL6J7l9QK_DO4MB45KzIUKIfKZIOE4hid4). Not every title is supported or fully playable.
-* Use the square [taskbar icon](https://drive.google.com/file/d/1ciiL1fqIvq2lNtDRZEdrBAeOh0wa03Ds/view?usp=sharing) to change your [OC Profile](https://wiki.switchroot.org/wiki/linux/linux-features#power-profiles-all-models). OC CPU should be enough for most games.
-* Several launch commands are defined in `launch-steam.sh`. Feel free to tweak them to fit your needs. Changing `STEAMDECK_MODE="false"` to `true` at the top enables steamdeck / big picture mode.
-* `wineesync` causes crashes with DXVK and is disabled in `launch-steam.sh`.
-* [Proton-CachyOS](https://github.com/CachyOS/proton-cachyos/releases), [GE-Proton](https://github.com/gloriouseggroll/proton-ge-custom) and [Luxtorpeda](https://luxtorpeda.org/) are supported. Some games may only work with [GE-Proton](https://github.com/gloriouseggroll/proton-ge-custom).
-* [ProtonPlus](https://github.com/Vysp3r/ProtonPlus) can be used to install custom Proton versions. Just download and run the latest [aarch64 appimage](https://github.com/Vysp3r/ProtonPlus/releases).
-* FEX currently does not support 32-bit games because of severe graphical bugs. Use non-FEX Proton versions like Experimental for 32-bit games.
+## Performance expectations
+
+Running Steam inside a VM on iPad has significant overhead. Realistic outcomes:
+
+| Goal | Feasibility |
+|------|-------------|
+| Steam client UI | Good |
+| Small native ARM Linux games | Possible |
+| Lightweight 2D / indie games via Proton | Maybe, with low settings |
+| AAA / demanding 3D games | Unlikely |
+
+Tips for better performance:
+
+- Allocate the maximum RAM your UTM profile allows (8 GB on 16 GB iPad Pro).
+- Use `UD_GAMEMODE=1` for memory-heavy games.
+- Keep the VM resolution at 1280×720 or lower.
+- Set `STEAMDECK_MODE="true"` at the top of `launch-steam.sh` for Big Picture / gamepad UI.
+
+---
+
+## Troubleshooting
+
+**Steam crashes with "illegal instruction"**
+The downgrade step should prevent this. Re-run the installer or check that `steam.cfg` exists in your Steam folder with `BootStrapperInhibitAll=enable`.
+
+**No Vulkan device**
+```bash
+sudo apt install mesa-vulkan-drivers libvulkan1 vulkan-tools
+vulkaninfo
+```
+
+**Box64 not working**
+```bash
+sudo apt install box64
+sudo systemctl restart systemd-binfmt
+```
+
+**Out of memory during games**
+Use launch options: `UD_GAMEMODE=1 UD_ZRAM=2 %command%`
 
 ---
 
 ## Explanation
-This script automates the download and installation of Steam ARM64. Because Steam client builds newer than April 15th, 2026, cause "illegal instruction" crashes on the Nintendo Switch, the script automatically downgrades specific parts of Steam to that version. The L4T kernel (4.9) is technically too old to support FEX-Emu but a WIP Proton FEX build for Armv8.0 is available [here](https://github.com/SildurFX/Switchdeck-Extras/releases/tag/Proton-11.0-1-Armv8.0). This setup also establishes an alternative x86_64 environment powered by Box64 to run x86_64 Proton builds. It applies custom compatibility patches to both native Proton and GE-Proton to ensure Vulkan 1.2 support and to disable a broken Vulkan extension, directly resolving vertex explosion bugs in 32-bit games on the Tegra X1.
 
-*Credits to Ivy for the original steam-arm64 download script*
+This project automates Steam ARM64 installation on ARM64 Linux. Newer Steam client builds (after ~April 2026) can cause illegal-instruction crashes on some ARM hardware; UTMdeck pins known-good binaries and blocks auto-updates via `steam.cfg`.
 
----
+Box64 provides an x86_64 compatibility layer so standard Proton builds can run on ARM64. DXVK-Sarek and VKD3D patches improve compatibility with limited Vulkan support in VM environments.
 
-## Community & Support
-
-* **[My Discord](https://discord.gg/EbsAecrVXg)** – My Discord for all my mods and projects.
-* **[Twitter](https://x.com/SildurFX)** – Updates, clips, and general progress.
-* **[Switchroot Discord](https://discord.gg/53mtKYt)** – For general L4T Linux help.
-* **[Patreon](https://www.patreon.com/Sildur)** / **[PayPal](https://www.paypal.com/donate/?cmd=_s-xclick&hosted_button_id=KY99R4D8YUEX2&source=url&ssrt=1786589479049)** – If you'd like to support my work!
+Based on [Switchdeck](https://github.com/SildurFX/Switchdeck) by SildurFX. Credits to Ivy for the original steam-arm64 download script.
 
 ---
 
-### Legal Notice
-The bash scripts (`launch-steam.sh`, etc.) in this repository are provided under the **GNU General Public License v3.0 (GPL-3.0)**.
-The Steam binaries, libraries, and resources located in `/files/downgrade/` are the proprietary property of **Valve Corporation**. These files are **NOT** covered by any open-source license and are subject to the [Steam Subscriber Agreement (SSA)](https://store.steampowered.com/subscriber_agreement).
-This project is **not** affiliated with, maintained by, or endorsed by Valve Corporation. It is provided "as-is" for the sole purpose of maintaining ARM64 compatibility for the Nintendo Switch (L4T) community.
+## Legal Notice
+
+The bash scripts in this repository are provided under the **GNU General Public License v3.0 (GPL-3.0)**.
+
+The Steam binaries in `/files/downgrade/` are the proprietary property of **Valve Corporation** and are subject to the [Steam Subscriber Agreement](https://store.steampowered.com/subscriber_agreement).
+
+This project is not affiliated with, maintained by, or endorsed by Valve Corporation or Nintendo.

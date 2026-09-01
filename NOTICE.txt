@@ -5,5 +5,7 @@ The bash scripts in this repository are provided under the GNU General Public Li
 The Steam binaries, libraries, and resources located in /files/downgrade/ are the proprietary property of Valve Corporation.
 These files are NOT covered by any open-source license and are subject to the Steam Subscriber Agreement (SSA).
 
-This project is not affiliated with, maintained by, or endorsed by Valve Corporation. 
-It is provided "as-is" for the sole purpose of maintaining ARM64 compatibility for the Nintendo Switch (L4T) community.
+This project is not affiliated with, maintained by, or endorsed by Valve Corporation.
+It is provided "as-is" for the sole purpose of maintaining ARM64 Steam compatibility on Ubuntu Linux running in UTM on iPad Pro.
+
+Adapted from Switchdeck (https://github.com/SildurFX/Switchdeck) by SildurFX.
