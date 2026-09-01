@@ -33,40 +33,34 @@ extract_tar_gz() {
 download_downgrade_file() {
     local filename="$1"
     local dest="$2"
-    local primary="${REPO_URL}/raw/${REPO_BRANCH}/files/downgrade/${filename}"
-    local fallback="${FALLBACK_DOWNGRADE_BASE}/${filename}"
+    local url="${DOWNGRADE_BASE}/${filename}"
 
-    try_download() {
-        local url="$1"
-        wget -q --show-progress -c -t 5 -O "$dest" "$url" || return 1
-        [ -s "$dest" ] || return 1
-        if [[ "$filename" == *.tar.gz ]]; then
-            verify_gzip_archive "$dest" || return 1
-        fi
-        return 0
-    }
-
-    try_download "$primary" && return 0
-    rm -f "$dest"
-    printf "\nRetrying %s from fallback mirror..\n" "$filename" >&2
-    try_download "$fallback"
+    wget -q --show-progress -c -t 5 -O "$dest" "$url" || return 1
+    [ -s "$dest" ] || return 1
+    if [[ "$filename" == *.tar.gz ]]; then
+        verify_gzip_archive "$dest" || return 1
+    fi
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || SCRIPT_DIR=""
 
 # Resolve downgrade/script source: local clone or download from GitHub
 resolve_install_source() {
-    if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/files/downgrade/steam.cfg" ]; then
+    if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/files/downgrade/steam.cfg" ] && \
+       verify_gzip_archive "$SCRIPT_DIR/files/downgrade/linuxarm64.tar.gz" 2>/dev/null; then
         printf "\nUsing local UTMdeck files from: %s\n" "$SCRIPT_DIR" >&2
         echo "$SCRIPT_DIR"
         return 0
+    fi
+
+    if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/files/downgrade/steam.cfg" ]; then
+        printf "\nLocal downgrade archives are corrupt, downloading fresh copies..\n" >&2
     fi
 
     printf "\nDownloading pinned Steam binaries (this may take a few minutes)..\n" >&2
     TEMP_UD="$STEAMROOT/temp_ud"
     mkdir -p "$TEMP_UD/files/downgrade" "$TEMP_UD/files/steam"
 
-    DOWNGRADE_BASE="${REPO_URL}/raw/${REPO_BRANCH}/files/downgrade"
     STEAM_BASE="${REPO_URL}/raw/${REPO_BRANCH}/files/steam"
 
     for f in steam.cfg linuxarm64.tar.gz linux_x86_64.zip steamui_websrc_all.zip \
@@ -75,8 +69,7 @@ resolve_install_source() {
             download_downgrade_file "$f" "$TEMP_UD/files/downgrade/$f" \
                 || exit_on_error "Failed to download valid $f (archive corrupt or incomplete)"
         else
-            wget -q --show-progress -c -t 5 -O "$TEMP_UD/files/downgrade/$f" "${REPO_URL}/raw/${REPO_BRANCH}/files/downgrade/$f" \
-                || wget -q --show-progress -c -t 5 -O "$TEMP_UD/files/downgrade/$f" "${FALLBACK_DOWNGRADE_BASE}/$f" \
+            wget -q --show-progress -c -t 5 -O "$TEMP_UD/files/downgrade/$f" "${DOWNGRADE_BASE}/$f" \
                 || exit_on_error "Failed to download $f (check your internet connection)"
         fi
     done
