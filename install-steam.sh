@@ -7,10 +7,48 @@ set -euo pipefail
 
 REPO_URL="https://github.com/m7830380-cyber/UTMdeck"
 REPO_BRANCH="main"
+FALLBACK_DOWNGRADE_BASE="https://raw.githubusercontent.com/SildurFX/Switchdeck/main/files/downgrade"
 
 exit_on_error() {
     printf "\nERROR: %s\n" "$1" >&2
     exit 1
+}
+
+verify_gzip_archive() {
+    local archive="$1"
+    [ -f "$archive" ] || return 1
+    gzip -t "$archive" 2>/dev/null
+}
+
+extract_tar_gz() {
+    local archive="$1"
+    local dest="$2"
+    local label="$3"
+
+    verify_gzip_archive "$archive" || exit_on_error "$label is corrupt or incomplete: $archive"
+    tar -xzf "$archive" -C "$dest" || exit_on_error "Failed to extract $label"
+}
+
+download_downgrade_file() {
+    local filename="$1"
+    local dest="$2"
+    local primary="${REPO_URL}/raw/${REPO_BRANCH}/files/downgrade/${filename}"
+    local fallback="${FALLBACK_DOWNGRADE_BASE}/${filename}"
+
+    try_download() {
+        local url="$1"
+        wget -q --show-progress -c -t 5 -O "$dest" "$url" || return 1
+        [ -s "$dest" ] || return 1
+        if [[ "$filename" == *.tar.gz ]]; then
+            verify_gzip_archive "$dest" || return 1
+        fi
+        return 0
+    }
+
+    try_download "$primary" && return 0
+    rm -f "$dest"
+    printf "\nRetrying %s from fallback mirror..\n" "$filename" >&2
+    try_download "$fallback"
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || SCRIPT_DIR=""
@@ -32,8 +70,14 @@ resolve_install_source() {
 
     for f in steam.cfg linuxarm64.tar.gz linux_x86_64.zip steamui_websrc_all.zip \
              steamrtarm64.tar.gz.partaa steamrtarm64.tar.gz.partab steamrtarm64.tar.gz.partac; do
-        wget -q --show-progress -c -t 5 -O "$TEMP_UD/files/downgrade/$f" "$DOWNGRADE_BASE/$f" \
-            || exit_on_error "Failed to download $f (check your internet connection)"
+        if [[ "$f" == *.tar.gz ]]; then
+            download_downgrade_file "$f" "$TEMP_UD/files/downgrade/$f" \
+                || exit_on_error "Failed to download valid $f (archive corrupt or incomplete)"
+        else
+            wget -q --show-progress -c -t 5 -O "$TEMP_UD/files/downgrade/$f" "${REPO_URL}/raw/${REPO_BRANCH}/files/downgrade/$f" \
+                || wget -q --show-progress -c -t 5 -O "$TEMP_UD/files/downgrade/$f" "${FALLBACK_DOWNGRADE_BASE}/$f" \
+                || exit_on_error "Failed to download $f (check your internet connection)"
+        fi
     done
 
     wget -q -t 5 -O "$TEMP_UD/files/steam/launch-steam.sh" "$STEAM_BASE/launch-steam.sh" \
@@ -56,7 +100,7 @@ apply_downgrade_files() {
 
     if [ -f "$DOWNGRADE/linuxarm64.tar.gz" ]; then
         mkdir -p "$STEAMROOT/linuxarm64"
-        tar -xzf "$DOWNGRADE/linuxarm64.tar.gz" -C "$STEAMROOT/linuxarm64"
+        extract_tar_gz "$DOWNGRADE/linuxarm64.tar.gz" "$STEAMROOT/linuxarm64" "linuxarm64.tar.gz"
     fi
 
     if [ -f "$DOWNGRADE/linux_x86_64.zip" ]; then
@@ -69,8 +113,10 @@ apply_downgrade_files() {
 
     if [ -f "$DOWNGRADE/steamrtarm64.tar.gz.partaa" ]; then
         mkdir -p "$STEAMROOT/steamrtarm64"
-        cat "$DOWNGRADE/steamrtarm64.tar.gz.part"* > "$STEAMROOT/temp_steamrtarm64.tar.gz"
-        tar -xzf "$STEAMROOT/temp_steamrtarm64.tar.gz" -C "$STEAMROOT/steamrtarm64"
+        cat "$DOWNGRADE/steamrtarm64.tar.gz.partaa" \
+            "$DOWNGRADE/steamrtarm64.tar.gz.partab" \
+            "$DOWNGRADE/steamrtarm64.tar.gz.partac" > "$STEAMROOT/temp_steamrtarm64.tar.gz"
+        extract_tar_gz "$STEAMROOT/temp_steamrtarm64.tar.gz" "$STEAMROOT/steamrtarm64" "steamrtarm64.tar.gz"
         rm -f "$STEAMROOT/temp_steamrtarm64.tar.gz"
     fi
 

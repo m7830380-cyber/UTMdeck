@@ -1,5 +1,7 @@
 * text eol=lf
 
-# don't break archive parts
+# Steam downgrade binaries must never be line-ending normalized
+files/downgrade/** -text
+*.tar.gz binary
 *.part* binary
 *.zip binary

@@ -112,6 +112,17 @@ Tips for better performance:
 
 ## Troubleshooting
 
+**tar: Skipping to next header / archive corrupt**
+The pinned Steam archive download was incomplete or corrupted. Fix:
+
+```bash
+rm -rf ~/.local/share/Steam ~/.steam
+wget https://raw.githubusercontent.com/m7830380-cyber/UTMdeck/main/install-steam.sh
+bash install-steam.sh
+```
+
+The installer now validates archives before extracting and falls back to the Switchdeck mirror if needed.
+
 **"Installing update" loop / "socket disconnected no more messages are expected"**
 Steam tried to auto-update before the pinned binaries were applied. Fix with a clean reinstall:
 
