@@ -49,8 +49,7 @@ The installer will:
 - Apply a known-good Steam downgrade (avoids illegal-instruction crashes)
 - Set up DXVK-Sarek and VKD3D compatibility patches
 - Create a desktop shortcut and `~/.local/bin/steam` command
-
-Use the **Steam** desktop shortcut or run `steam` from a terminal to launch.
+- **Launch Steam automatically** so you can log in and finish first-time setup
 
 ---
 

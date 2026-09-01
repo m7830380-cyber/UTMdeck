@@ -307,28 +307,6 @@ else
     ln -fsn "$STEAMROOT" "$STEAMHOME/steam"
 fi
 
-if [ ! -x "$RTARM64ROOT/steam" ]; then
-    printf "\nDownloading steam bootstrap..\n"
-    mkdir -p "$STEAMROOT/package"
-    rm -f "$STEAMROOT/package/beta"
-    echo "publicbeta" > "$STEAMROOT/package/beta"
-    chmod 444 "$STEAMROOT/package/beta"
-    wget -q --show-progress -c -t 5 -O "$STEAMROOT/linuxarm64.zip" "https://client-update.steamstatic.com/bins_linuxarm64_linuxarm64.zip.f523fa87fc6b9b5435a5e7370cb0d664ef53b50b" || exit_on_error "steam bootstrap download failed (check your internet connection)"
-    unzip -d "$STEAMROOT" "$STEAMROOT/linuxarm64.zip" "steamrtarm64/steam"
-    chmod +x "$RTARM64ROOT/steam"
-    rm -rf "$STEAMROOT/linuxarm64.zip"
-fi
-
-if [ ! -x "$RTARM64ROOT/pv-runtime/steam-runtime-steamrt-arm64" ]; then
-    printf "\nFetching current Steam runtime version..\n"
-    VERSION=$(wget -qO- "https://repo.steampowered.com/steamrt3c/images/latest-public-beta.txt" | tr -d '[:space:]') && [ -n "$VERSION" ] || exit_on_error "failed to retrieve the version number from Steam repository"
-    printf "\nDownloading steam-runtime version %s..\n" "$VERSION"
-    mkdir -p "$RTARM64ROOT/pv-runtime"
-    wget -q --show-progress -c -t 5 -O "$RTARM64ROOT/pv-runtime/steam-runtime-steamrt-arm64.tar.xz" "https://repo.steampowered.com/steamrt3c/images/${VERSION}/steam-runtime-steamrt-arm64.tar.xz" || exit_on_error "steam runtime download failed (check your internet connection)"
-    tar -xf "$RTARM64ROOT/pv-runtime/steam-runtime-steamrt-arm64.tar.xz" --directory "$RTARM64ROOT/pv-runtime" --checkpoint=200 --checkpoint-action=dot
-    rm -rf "$RTARM64ROOT/pv-runtime/steam-runtime-steamrt-arm64.tar.xz"
-fi
-
 if [ ! -d "$STEAMROOT/UTMdeck/DXVK" ]; then
     printf "\nDownloading DXVK-Sarek..\n"
     mkdir -p "$STEAMROOT/UTMdeck/DXVK"
@@ -361,6 +339,70 @@ if [ ! -d "$STEAMROOT/UTMdeck/VKD3D" ]; then
 
     printf "\nVKD3D installed successfully in UTMdeck/VKD3D.\n"
 fi
+
+ensure_steam_bootstrap() {
+    if [ -x "$RTARM64ROOT/steam" ]; then
+        return 0
+    fi
+
+    printf "\nDownloading steam bootstrap..\n"
+    mkdir -p "$STEAMROOT/package"
+    rm -f "$STEAMROOT/package/beta"
+    echo "publicbeta" > "$STEAMROOT/package/beta"
+    chmod 444 "$STEAMROOT/package/beta"
+    wget -q --show-progress -c -t 5 -O "$STEAMROOT/linuxarm64.zip" "https://client-update.steamstatic.com/bins_linuxarm64_linuxarm64.zip.f523fa87fc6b9b5435a5e7370cb0d664ef53b50b" || exit_on_error "steam bootstrap download failed (check your internet connection)"
+    unzip -d "$STEAMROOT" "$STEAMROOT/linuxarm64.zip" "steamrtarm64/steam"
+    chmod +x "$RTARM64ROOT/steam"
+    rm -rf "$STEAMROOT/linuxarm64.zip"
+}
+
+ensure_steam_runtime() {
+    if [ -x "$RTARM64ROOT/pv-runtime/steam-runtime-steamrt-arm64" ]; then
+        return 0
+    fi
+    if compgen -G "$RTARM64ROOT/pv-runtime/steam-runtime-steamrt-arm64/" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    printf "\nFetching current Steam runtime version..\n"
+    VERSION=$(wget -qO- "https://repo.steampowered.com/steamrt3c/images/latest-public-beta.txt" | tr -d '[:space:]') && [ -n "$VERSION" ] || exit_on_error "failed to retrieve the version number from Steam repository"
+    printf "\nDownloading steam-runtime version %s..\n" "$VERSION"
+    mkdir -p "$RTARM64ROOT/pv-runtime"
+    wget -q --show-progress -c -t 5 -O "$RTARM64ROOT/pv-runtime/steam-runtime-steamrt-arm64.tar.xz" "https://repo.steampowered.com/steamrt3c/images/${VERSION}/steam-runtime-steamrt-arm64.tar.xz" || exit_on_error "steam runtime download failed (check your internet connection)"
+    tar -xf "$RTARM64ROOT/pv-runtime/steam-runtime-steamrt-arm64.tar.xz" --directory "$RTARM64ROOT/pv-runtime" --checkpoint=200 --checkpoint-action=dot
+    rm -rf "$RTARM64ROOT/pv-runtime/steam-runtime-steamrt-arm64.tar.xz"
+}
+
+finalize_steam_install() {
+    printf "\nInstalling pinned Steam client..\n"
+    INSTALL_SRC="$(resolve_install_source)"
+    apply_downgrade_files "$INSTALL_SRC"
+    setup_steam_shortcuts
+
+    if [ "$INSTALL_SRC" = "$STEAMROOT/temp_ud" ]; then
+        rm -rf "$STEAMROOT/temp_ud"
+    fi
+
+    ensure_steam_bootstrap
+    ensure_steam_runtime
+
+    [ -x "$STEAMROOT/launch-steam.sh" ] || exit_on_error "launch-steam.sh is missing after install"
+    [ -x "$RTARM64ROOT/steam" ] || exit_on_error "Steam binary is missing after install"
+    [ -f "$STEAMROOT/steam.cfg" ] || exit_on_error "steam.cfg is missing — auto-updates are not blocked"
+
+    chmod -R +x "$STEAMROOT"
+
+    printf "\nInstallation complete! Launching Steam for first-time setup..\n"
+    printf "Log in to your Steam account when the window opens.\n"
+    printf "You may be prompted once to install Steam Runtime 4.0 — accept it.\n"
+    printf "Close Steam normally when you are done.\n\n"
+    sleep 2
+
+    "$STEAMROOT/launch-steam.sh" || true
+
+    printf "\nSteam is installed.\n"
+    printf "Launch anytime with the desktop shortcut or: steam\n\n"
+}
 
 # Fix controller permissions
 CONTROLLER_RELOAD=0
@@ -413,17 +455,4 @@ EOF
     sudo sysctl --system >/dev/null 2>&1 || true
 fi
 
-if [ -x "$RTARM64ROOT/steam" ]; then
-    INSTALL_SRC="$(resolve_install_source)"
-    apply_downgrade_files "$INSTALL_SRC"
-    setup_steam_shortcuts
-
-    if [ "$INSTALL_SRC" = "$STEAMROOT/temp_ud" ]; then
-        rm -rf "$STEAMROOT/temp_ud"
-    fi
-
-    printf "\nInstallation complete!\n"
-    printf "Steam was NOT launched during install (avoids update loops).\n"
-    printf "Launch Steam now with the desktop shortcut or: steam\n\n"
-    sleep 3
-fi
+finalize_steam_install
